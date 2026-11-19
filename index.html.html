@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Ders Bazlı QR Yoklama ve Excel Rapor Sistemi</title>
+  <!-- QR Okuyucu ve Excel (.xlsx) Kütüphaneleri -->
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --bg: #f4f6f9;
+      --card: #ffffff;
+      --primary: #1d4ed8;
+      --primary-dark: #1e40af;
+      --success: #15803d;
+      --success-bg: #dcfce7;
+      --danger: #b91c1c;
+      --danger-bg: #fee2e2;
+      --text: #0f172a;
+      --muted: #64748b;
+      --border: #e2e8f0;
+    }
+
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { margin: 0; background: var(--bg); color: var(--text); padding: 14px; padding-bottom: 60px; }
+    .container { max-width: 720px; margin: 0 auto; }
+
+    header {
+      background: var(--card);
+      padding: 16px;
+      border-radius: 14px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+      margin-bottom: 14px;
+    }
+    header h1 { margin: 0 0 6px 0; font-size: 1.2rem; }
+    header p { margin: 0; font-size: 0.88rem; color: var(--muted); }
+
+    .card {
+      background: var(--card);
+      padding: 16px;
+      border-radius: 14px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+      margin-bottom: 14px;
+    }
+    .card h2 { margin: 0 0 12px 0; font-size: 1rem; }
+
+    .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    input, select, button {
+      font-size: 0.95rem;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+    }
+    input, select { flex: 1; min-width: 140px; background: #fff; color: var(--text); }
+
+    button {
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.92; }
+    button.secondary { background: #475569; }
+    button.success { background: var(--success); }
+    button.danger { background: var(--danger); }
+    button.outline {
+      background: transparent;
+      color: var(--primary);
+      border: 1px solid var(--primary);
+    }
+
+    #reader {
+      width: 100%;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #000;
+      margin-top: 10px;
+    }
+
+    .status-banner {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      display: none;
+    }
+    .status-banner.ok { display: block; background: var(--success-bg); color: var(--success); }
+    .status-banner.warn { display: block; background: var(--danger-bg); color: var(--danger); }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+    .stat-box {
+      background: var(--bg);
+      padding: 10px;
+      border-radius: 10px;
+    }
+    .stat-box .num { font-size: 1.25rem; font-weight: 700; display: block; }
+    .stat-box .lbl { font-size: 0.78rem; color: var(--muted); }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { padding: 10px 8px; border-bottom: 1px solid var(--border); text-align: left; }
+    th { color: var(--muted); font-size: 0.8rem; text-transform: uppercase; }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .badge.var { background: var(--success-bg); color: var(--success); }
+    .badge.yok { background: var(--danger-bg); color: var(--danger); }
+
+    .small-note { font-size: 0.8rem; color: var(--muted); margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>QR Öğrenci Yoklama &amp; Excel Raporu</h1>
+      <p>Her ders için ayrı yoklama alın; QR okutulanlar <strong>Var</strong>, okutulmayanlar <strong>Yok</strong> yazılsın.</p>
+    </header>
+
+    <!-- 1. DERS SEÇİMİ VE EKLEME -->
+    <div class="card">
+      <h2>1. Ders Seç veya Yeni Ders Ekle</h2>
+      <div class="row" style="margin-bottom: 10px;">
+        <select id="courseSelect" onchange="changeCourse()"></select>
+        <input type="date" id="sessionDate" onchange="renderAll()" />
+      </div>
+      <div class="row">
+        <input type="text" id="newCourseName" placeholder="Yeni ders adı (Örn: Algoritmalar)" />
+        <button onclick="addCourse()">+ Ders Ekle</button>
+      </div>
+    </div>
+
+    <!-- 2. ÖĞRENCİ EKLEME -->
+    <div class="card">
+      <h2>2. Seçili Derse Öğrenci Ekle</h2>
+      <div class="row">
+        <input type="text" id="studentNo" placeholder="Öğrenci No (QR içeriği)" />
+        <input type="text" id="studentName" placeholder="Ad Soyad" />
+        <button class="secondary" onclick="addStudent()">Ekle</button>
+      </div>
+      <div class="row" style="margin-top: 8px;">
+        <button class="outline" onclick="loadSampleStudents()">Örnek Öğrenci Ekle (Test İçin)</button>
+        <button class="outline" onclick="resetAttendance()">Tümünü 'Yok' Yap</button>
+      </div>
+    </div>
+
+    <!-- 3. KAMERA İLE QR OKUTMA -->
+    <div class="card">
+      <h2>3. iPhone Kamera ile QR Kod Okut</h2>
+      <div class="row">
+        <button class="success" onclick="startScanner()">Kamerayı Başlat</button>
+        <button class="danger" onclick="stopScanner()">Kamerayı Durdur</button>
+      </div>
+      <div id="reader"></div>
+      <div id="scanBanner" class="status-banner"></div>
+      <p class="small-note">Not: QR kod okunduğunda öğrenci numarası eşleşirse otomatik <strong>Var</strong> yapılır. Okutulmayanlar <strong>Yok</strong> kalır.</p>
+    </div>
+
+    <!-- 4. YOKLAMA LİSTESİ VE EXCEL PAYLAŞIMI -->
+    <div class="card">
+      <h2>4. Yoklama Durumu ve Excel Çıktısı</h2>
+      <div class="stats">
+        <div class="stat-box"><span class="num" id="statTotal">0</span><span class="lbl">Toplam</span></div>
+        <div class="stat-box"><span class="num" id="statVar" style="color:var(--success)">0</span><span class="lbl">Var</span></div>
+        <div class="stat-box"><span class="num" id="statYok" style="color:var(--danger)">0</span><span class="lbl">Yok</span></div>
+      </div>
+
+      <div class="row" style="margin-bottom: 12px;">
+        <button class="success" onclick="exportExcel()" style="width:100%;">Excel (.xlsx) Olarak İndir / Paylaş</button>
+      </div>
+
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>No</th>
+              <th>Ad Soyad</th>
+              <th>Durum (Tıkla Değiştir)</th>
+              <th>Saat</th>
+            </tr>
+          </thead>
+          <tbody id="attendanceBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEY = "qr_yoklama_projesi_v1";
+    let html5QrCode = null;
+    let lastScannedCode = "";
+    let lastScanTime = 0;
+
+    // Varsayılan veri yapısı
+    let db = {
+      activeCourseId: "ders-1",
+      courses: [
+        {
+          id: "ders-1",
+          name: "Örnek Ders - Bilgisayar Programlama",
+          students: [
+            { no: "2024001", name: "Ayşe Yılmaz" },
+            { no: "2024002", name: "Mehmet Kaya" },
+            { no: "2024003", name: "Zeynep Demir" }
+          ],
+          // tarih -> { ogrenciNo: { status: "Var" | "Yok", time: "09:12" } }
+          sessions: {}
+        }
+      ]
+    };
+
+    function saveDB() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+    }
+
+    function loadDB() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        try {
+          db = JSON.parse(raw);
+        } catch (e) {}
+      }
+      const today = new Date().toISOString().split("T")[0];
+      document.getElementById("sessionDate").value = today;
+    }
+
+    function getCurrentCourse() {
+      return db.courses.find(c => c.id === db.activeCourseId) || db.courses[0];
+    }
+
+    function getCurrentSession() {
+      const course = getCurrentCourse();
+      const date = document.getElementById("sessionDate").value || new Date().toISOString().split("T")[0];
+      if (!course.sessions[date]) {
+        course.sessions[date] = {};
+      }
+      // Listede olan her öğrenci için varsayılan "Yok" kaydı oluştur
+      course.students.forEach(st => {
+        if (!course.sessions[date][st.no]) {
+          course.sessions[date][st.no] = { status: "Yok", time: "-" };
+        }
+      });
+      return course.sessions[date];
+    }
+
+    function addCourse() {
+      const input = document.getElementById("newCourseName");
+      const name = input.value.trim();
+      if (!name) return alert("Lütfen bir ders adı gir.");
+
+      const newId = "ders-" + Date.now();
+      db.courses.push({
+        id: newId,
+        name,
+        students: [],
+        sessions: {}
+      });
+      db.activeCourseId = newId;
+      input.value = "";
+      saveDB();
+      renderAll();
+    }
+
+    function changeCourse() {
+      db.activeCourseId = document.getElementById("courseSelect").value;
+      saveDB();
+      renderAll();
+    }
+
+    function addStudent() {
+      const noEl = document.getElementById("studentNo");
+      const nameEl = document.getElementById("studentName");
+      const no = noEl.value.trim();
+      const name = nameEl.value.trim();
+      if (!no || !name) return alert("Öğrenci numarası ve ad soyad gir.");
+
+      const course = getCurrentCourse();
+      if (course.students.some(s => s.no === no)) {
+        return alert("Bu öğrenci numarası zaten bu derste kayıtlı.");
+      }
+
+      course.students.push({ no, name });
+      noEl.value = "";
+      nameEl.value = "";
+      saveDB();
+      renderAll();
+    }
+
+    function loadSampleStudents() {
+      const course = getCurrentCourse();
+      const samples = [
+        { no: "1001", name: "Emre Can" },
+        { no: "1002", name: "Elif Şahin" },
+        { no: "1003", name: "Burak Yıldız" }
+      ];
+      samples.forEach(s => {
+        if (!course.students.some(existing => existing.no === s.no)) {
+          course.students.push(s);
+        }
+      });
+      saveDB();
+      renderAll();
+    }
+
+    function resetAttendance() {
+      const course = getCurrentCourse();
+      const date = document.getElementById("sessionDate").value;
+      course.sessions[date] = {};
+      course.students.forEach(st => {
+        course.sessions[date][st.no] = { status: "Yok", time: "-" };
+      });
+      saveDB();
+      renderAll();
+    }
+
+    function toggleStatus(studentNo) {
+      const session = getCurrentSession();
+      const current = session[studentNo] || { status: "Yok", time: "-" };
+      const nowTime = new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+
+      if (current.status === "Var") {
+        session[studentNo] = { status: "Yok", time: "-" };
+      } else {
+        session[studentNo] = { status: "Var", time: nowTime };
+      }
+      saveDB();
+      renderAll();
+    }
+
+    function showBanner(msg, type) {
+      const banner = document.getElementById("scanBanner");
+      banner.textContent = msg;
+      banner.className = "status-banner " + type;
+    }
+
+    // QR kod metninden öğrenci numarasını ayıklama (düz numara veya ayraçlı metin destekler)
+    function extractStudentNo(rawText) {
+      const cleaned = rawText.trim();
+      const course = getCurrentCourse();
+      // Doğrudan eşleşme varsa
+      if (course.students.some(s => s.no === cleaned)) return cleaned;
+      // Metin içinde geçen öğrenci numaralarından eşleşen var mı bak
+      for (const st of course.students) {
+        if (cleaned.includes(st.no)) return st.no;
+      }
+      return cleaned;
+    }
+
+    function handleQrDecoded(decodedText) {
+      const now = Date.now();
+      // Aynı kodu 2 saniye içinde tekrar tekrar okutmayı engelle
+      if (decodedText === lastScannedCode && now - lastScanTime < 2000) return;
+      lastScannedCode = decodedText;
+      lastScanTime = now;
+
+      const studentNo = extractStudentNo(decodedText);
+      const course = getCurrentCourse();
+      const student = course.students.find(s => s.no === studentNo);
+      const session = getCurrentSession();
+
+      if (!student) {
+        showBanner(`Okunan QR ("${decodedText}") bu dersteki öğrenci listesinde bulunamadı.`, "warn");
+        return;
+      }
+
+      const nowTime = new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+      session[student.no] = { status: "Var", time: nowTime };
+      saveDB();
+      renderAll();
+      showBanner(`${student.no} - ${student.name} -> VAR olarak işaretlendi (${nowTime})`, "ok");
+    }
+
+    async function startScanner() {
+      if (html5QrCode) {
+        try { await html5QrCode.stop(); } catch (e) {}
+      }
+      html5QrCode = new Html5Qrcode("reader");
+      try {
+        await html5QrCode.start(
+          { facingMode: "environment" }, // iPhone arka kamera
+          { fps: 10, qrbox: { width: 230, height: 230 } },
+          handleQrDecoded,
+          () => {}
+        );
+      } catch (err) {
+        alert("Kamera başlatılamadı. iPhone Safari ayarlarından kamera iznini kontrol et veya HTTPS/yerel sunucu üzerinden aç. Detay: " + err);
+      }
+    }
+
+    async function stopScanner() {
+      if (html5QrCode) {
+        try {
+          await html5QrCode.stop();
+          document.getElementById("reader").innerHTML = "";
+        } catch (e) {}
+      }
+    }
+
+    function exportExcel() {
+      const course = getCurrentCourse();
+      const date = document.getElementById("sessionDate").value;
+      const session = getCurrentSession();
+
+      const rows = course.students.map(st => {
+        const rec = session[st.no] || { status: "Yok", time: "-" };
+        return {
+          "Ders Adı": course.name,
+          "Tarih": date,
+          "Öğrenci No": st.no,
+          "Ad Soyad": st.name,
+          "Durum": rec.status,
+          "Okutulma Saati": rec.time
+        };
+      });
+
+      const worksheet = XLSX.utils.json_to_sheet(rows);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Yoklama");
+
+      const safeCourseName = course.name.replace(/[^a-zA-Z0-9ğüşöçıİĞÜŞÖÇ_-]/g, "_");
+      const fileName = `${safeCourseName}_${date}_Yoklama.xlsx`;
+      XLSX.writeFile(workbook, fileName);
+    }
+
+    function renderAll() {
+      const select = document.getElementById("courseSelect");
+      select.innerHTML = db.courses
+        .map(c => `<option value="${c.id}" ${c.id === db.activeCourseId ? "selected" : ""}>${c.name}</option>`)
+        .join("");
+
+      const course = getCurrentCourse();
+      const session = getCurrentSession();
+      const tbody = document.getElementById("attendanceBody");
+
+      let varCount = 0;
+      let yokCount = 0;
+
+      tbody.innerHTML = course.students
+        .map(st => {
+          const rec = session[st.no] || { status: "Yok", time: "-" };
+          if (rec.status === "Var") varCount++;
+          else yokCount++;
+
+          const badgeClass = rec.status === "Var" ? "var" : "yok";
+          return `
+            <tr>
+              <td>${st.no}</td>
+              <td>${st.name}</td>
+              <td><span class="badge ${badgeClass}" onclick="toggleStatus('${st.no}')">${rec.status}</span></td>
+              <td>${rec.time}</td>
+            </tr>
+          `;
+        })
+        .join("");
+
+      document.getElementById("statTotal").textContent = course.students.length;
+      document.getElementById("statVar").textContent = varCount;
+      document.getElementById("statYok").textContent = yokCount;
+    }
+
+    loadDB();
+    renderAll();
+  </script>
+</body>
+</html>
